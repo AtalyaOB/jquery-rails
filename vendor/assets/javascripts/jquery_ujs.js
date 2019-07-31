@@ -48,7 +48,7 @@
     requiredInputSelector: 'input[name][required]:not([disabled]), textarea[name][required]:not([disabled])',
 
     // Form file input elements
-    fileInputSelector: 'input[type=file]:not([disabled])',
+    fileInputSelector: 'input[name][type=file]:not([disabled])',
 
     // Link onClick disable selector with possible reenable after remote submission
     linkDisableSelector: 'a[data-disable-with], a[data-disable]',
@@ -115,7 +115,7 @@
         if (element.is('form')) {
           method = element.data('ujs:submit-button-formmethod') || element.attr('method');
           url = element.data('ujs:submit-button-formaction') || element.attr('action');
-          data = $(element[0].elements).serializeArray();
+          data = $(element[0]).serializeArray();
           // memoized value from clicked submit button
           var button = element.data('ujs:submit-button');
           if (button) {
@@ -309,24 +309,45 @@
 
     // Helper function which checks for blank inputs in a form that match the specified CSS selector
     blankInputs: function(form, specifiedSelector, nonBlank) {
-      var inputs = $(), input, valueToCheck,
-          selector = specifiedSelector || 'input,textarea',
-          allInputs = form.find(selector);
+      var foundInputs = $(),
+        input,
+        valueToCheck,
+        radiosForNameWithNoneSelected,
+        radioName,
+        selector = specifiedSelector || 'input,textarea',
+        requiredInputs = form.find(selector),
+        checkedRadioButtonNames = {};
 
-      allInputs.each(function() {
+      requiredInputs.each(function() {
         input = $(this);
-        valueToCheck = input.is('input[type=checkbox],input[type=radio]') ? input.is(':checked') : !!input.val();
-        if (valueToCheck === nonBlank) {
+        if (input.is('input[type=radio]')) {
 
-          // Don't count unchecked required radio if other radio with same name is checked
-          if (input.is('input[type=radio]') && allInputs.filter('input[type=radio]:checked[name="' + input.attr('name') + '"]').length) {
-            return true; // Skip to next input
+          // Don't count unchecked required radio as blank if other radio with same name is checked,
+          // regardless of whether same-name radio input has required attribute or not. The spec
+          // states https://www.w3.org/TR/html5/forms.html#the-required-attribute
+          radioName = input.attr('name');
+
+          // Skip if we've already seen the radio with this name.
+          if (!checkedRadioButtonNames[radioName]) {
+
+            // If none checked
+            if (form.find('input[type=radio]:checked[name="' + radioName + '"]').length === 0) {
+              radiosForNameWithNoneSelected = form.find(
+                'input[type=radio][name="' + radioName + '"]');
+              foundInputs = foundInputs.add(radiosForNameWithNoneSelected);
+            }
+
+            // We only need to check each name once.
+            checkedRadioButtonNames[radioName] = radioName;
           }
-
-          inputs = inputs.add(input);
+        } else {
+          valueToCheck = input.is('input[type=checkbox],input[type=radio]') ? input.is(':checked') : !!input.val();
+          if (valueToCheck === nonBlank) {
+            foundInputs = foundInputs.add(input);
+          }
         }
       });
-      return inputs.length ? inputs : false;
+      return foundInputs.length ? foundInputs : false;
     },
 
     // Helper function which checks for non-blank inputs in a form that match the specified CSS selector
@@ -395,15 +416,15 @@
       });
     });
 
-    $document.delegate(rails.linkDisableSelector, 'ajax:complete', function() {
+    $document.on('ajax:complete', rails.linkDisableSelector, function() {
         rails.enableElement($(this));
     });
 
-    $document.delegate(rails.buttonDisableSelector, 'ajax:complete', function() {
+    $document.on('ajax:complete', rails.buttonDisableSelector, function() {
         rails.enableFormElement($(this));
     });
 
-    $document.delegate(rails.linkClickSelector, 'click.rails', function(e) {
+    $document.on('click.rails', rails.linkClickSelector, function(e) {
       var link = $(this), method = link.data('method'), data = link.data('params'), metaClick = e.metaKey || e.ctrlKey;
       if (!rails.allowAction(link)) return rails.stopEverything(e);
 
@@ -427,7 +448,7 @@
       }
     });
 
-    $document.delegate(rails.buttonClickSelector, 'click.rails', function(e) {
+    $document.on('click.rails', rails.buttonClickSelector, function(e) {
       var button = $(this);
 
       if (!rails.allowAction(button) || !rails.isRemote(button)) return rails.stopEverything(e);
@@ -444,7 +465,7 @@
       return false;
     });
 
-    $document.delegate(rails.inputChangeSelector, 'change.rails', function(e) {
+    $document.on('change.rails', rails.inputChangeSelector, function(e) {
       var link = $(this);
       if (!rails.allowAction(link) || !rails.isRemote(link)) return rails.stopEverything(e);
 
@@ -452,7 +473,7 @@
       return false;
     });
 
-    $document.delegate(rails.formSubmitSelector, 'submit.rails', function(e) {
+    $document.on('submit.rails', rails.formSubmitSelector, function(e) {
       var form = $(this),
         remote = rails.isRemote(form),
         blankRequiredInputs,
@@ -497,7 +518,7 @@
       }
     });
 
-    $document.delegate(rails.formInputClickSelector, 'click.rails', function(event) {
+    $document.on('click.rails', rails.formInputClickSelector, function(event) {
       var button = $(this);
 
       if (!rails.allowAction(button)) return rails.stopEverything(event);
@@ -518,11 +539,11 @@
       form.data('ujs:submit-button-formmethod', button.attr('formmethod'));
     });
 
-    $document.delegate(rails.formSubmitSelector, 'ajax:send.rails', function(event) {
+    $document.on('ajax:send.rails', rails.formSubmitSelector, function(event) {
       if (this === event.target) rails.disableFormElements($(this));
     });
 
-    $document.delegate(rails.formSubmitSelector, 'ajax:complete.rails', function(event) {
+    $document.on('ajax:complete.rails', rails.formSubmitSelector, function(event) {
       if (this === event.target) rails.enableFormElements($(this));
     });
 
